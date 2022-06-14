@@ -1,8 +1,4 @@
-**This is a rewritten fork of TheYkk/synator.**
-
-It's better, cleaner, faster, but note that the API has changed.
-For example, `synator/sync` is a label, not an annotation (this is important for performance). 
-
+**This is a rewritten fork of almson/synator, a fork of TheYkk/synator.**
 
 # Synator Kubernetes Secret and ConfigMap synchronizer
 
@@ -16,7 +12,7 @@ Synator uses [kopf](https://github.com/nolar/kopf) python framework.
 
 ## Installation
 
-**NOTE: This branch is not publicly deployed. You must build the image yourself and specify it in `deploy.yml`.
+This branch is publicly deployed to josuealcalde/synator. You can build the image modifying `deploy.yml`.
 See the 'Build and Deploy' section.**
 
 Apply [deploy.yml](deploy.yml) to Kubernetes.
@@ -37,6 +33,14 @@ metadata:
 data:
   tt: dHQONTExMjMONTU=
 ```
+
+You can also add `synator/merge=yes` which will merge all the keys from ConfigMaps in different
+namespaces to the target namespace.
+If you use merge mode, you are advised to use `synator/include-namespaces` to limit the target
+namespace.
+Merge will allow you to make a big ConfigMap with different keys from different namespaces.
+Deletion is not automatically managed when you are using "merge" mode and you should manage it 
+in your own.
 
 ### Specifying destination namespaces
 

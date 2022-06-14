@@ -6,6 +6,7 @@ from prodict import Prodict
 
 
 SYNC_LABEL = 'synator/sync'
+MERGE_LABEL = 'synator/merge'
 INCLUDE_NAMESPACES_ANNOTATION = 'synator/include-namespaces'
 EXCLUDE_NAMESPACES_ANNOTATION = 'synator/exclude-namespaces'
 INCLUDE_LABELS_ANNOTATION = 'synator/include-labels'
@@ -45,7 +46,20 @@ def handle_create_or_update(resource, new, name, namespace, annotations, logger,
     obj = _to_obj(new)
     _clean(obj.metadata)
     for target_namespace in target_namespaces:
-        _create_or_update(resource.kind, obj, name, target_namespace, logger)
+        _create_update_or_merge(resource.kind, obj, True, name, target_namespace, logger)
+
+
+@kopf.on.create('', 'v1', 'secrets', labels={MERGE_LABEL: 'yes'}, when=_is_watched_namespace)
+@kopf.on.update('', 'v1', 'secrets', labels={MERGE_LABEL: 'yes'}, when=_is_watched_namespace)
+@kopf.on.create('', 'v1', 'configmaps', labels={MERGE_LABEL: 'yes'}, when=_is_watched_namespace)
+@kopf.on.update('', 'v1', 'configmaps', labels={MERGE_LABEL: 'yes'}, when=_is_watched_namespace)
+def handle_create_or_merge(resource, new, name, namespace, annotations, logger, **_):
+    target_namespaces = _get_target_namespaces(annotations, namespace)
+
+    obj = _to_obj(new)
+    _clean(obj.metadata)
+    for target_namespace in target_namespaces:
+        _create_update_or_merge(resource.kind, obj, False, name, target_namespace, logger)
 
 
 @kopf.on.delete('', 'v1', 'secrets', labels={SYNC_LABEL: 'yes'}, when=_is_watched_namespace)
@@ -64,14 +78,28 @@ def handle_create_namespace(name, logger, **_):
         new_secret = _copy(secret)
         _clean(new_secret.metadata)
         for target_namespace in _filter_target_namespaces(secret.metadata.annotations, [name]):
-            _create_or_update('Secret', new_secret, secret.metadata.name, target_namespace, logger)
+            _create_update_or_merge('Secret', new_secret, True, secret.metadata.name, target_namespace, logger)
 
     api_response = api.list_config_map_for_all_namespaces(label_selector=f'{SYNC_LABEL}==yes')
     for configmap in api_response.items:
         new_configmap = _copy(configmap)
         _clean(new_configmap.metadata)
         for target_namespace in _filter_target_namespaces(configmap.metadata.annotations, [name]):
-            _create_or_update('ConfigMap', new_configmap, configmap.metadata.name, target_namespace, logger)
+            _create_update_or_merge('ConfigMap', new_configmap, True, configmap.metadata.name, target_namespace, logger)
+
+    api_response = api.list_secret_for_all_namespaces(label_selector=f'{MERGE_LABEL}==yes')
+    for secret in api_response.items:
+        new_secret = _copy(secret)
+        _clean(new_secret.metadata)
+        for target_namespace in _filter_target_namespaces(secret.metadata.annotations, [name]):
+            _create_update_or_merge('Secret', new_secret, False, secret.metadata.name, target_namespace, logger)
+
+    api_response = api.list_config_map_for_all_namespaces(label_selector=f'{MERGE_LABEL}==yes')
+    for configmap in api_response.items:
+        new_configmap = _copy(configmap)
+        _clean(new_configmap.metadata)
+        for target_namespace in _filter_target_namespaces(configmap.metadata.annotations, [name]):
+            _create_update_or_merge('ConfigMap', new_configmap, False, configmap.metadata.name, target_namespace, logger)
 
 
 def _copy(obj):
@@ -149,7 +177,7 @@ def _filter(includes, excludes, candidates, exact=True):
     return filtered
 
 
-def _create_or_update(kind, obj, name, namespace, logger):
+def _create_update_or_merge(kind, obj, update, name, namespace, logger):
     try:
         if kind == 'ConfigMap': existing = api.read_namespaced_config_map(name, namespace)
         elif kind == 'Secret':  existing = api.read_namespaced_secret(name, namespace)
@@ -162,8 +190,12 @@ def _create_or_update(kind, obj, name, namespace, logger):
             if kind == 'ConfigMap': api.create_namespaced_config_map(namespace, obj)
             elif kind == 'Secret':  api.create_namespaced_secret(namespace, obj)
         elif existing.metadata.labels and existing.metadata.labels['app.kubernetes.io/managed-by'] == MANAGED_BY_LABEL:
-            if kind == 'ConfigMap': api.replace_namespaced_config_map(name, namespace, obj)
-            elif kind == 'Secret':  api.replace_namespaced_secret(name, namespace, obj)
+            if update:
+                if kind == 'ConfigMap': api.replace_namespaced_config_map(name, namespace, obj)
+                elif kind == 'Secret':  api.replace_namespaced_secret(name, namespace, obj)
+            else:
+                if kind == 'ConfigMap': api.patch_namespaced_config_map(name, namespace, obj)
+                elif kind == 'Secret':  api.patch_namespaced_secret(name, namespace, obj)
         else:
             logger.info(f"Not updating {kind} {namespace}/{name} because label 'app.kubernetes.io/managed-by=synator' is missing")
     except kubernetes.client.ApiException as e:

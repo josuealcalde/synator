@@ -54,4 +54,4 @@ spec:
       serviceAccountName: synator
       containers:
         - name: synator
-          image: josuealcalde/synator:v2.0.0
+          image: josuealcalde/synator:v2.1.0
