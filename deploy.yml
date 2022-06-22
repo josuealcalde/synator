@@ -20,7 +20,7 @@ rules:
     resources: [events]
     verbs: [create]
   - apiGroups: [""]
-    resources: ["namespaces", "namespaces/status"]
+    resources: ["namespaces", "pods", "namespaces/status"]
     verbs: ["*"]
 ---
 kind: ClusterRoleBinding
@@ -54,4 +54,4 @@ spec:
       serviceAccountName: synator
       containers:
         - name: synator
-          image: josuealcalde/synator:v2.1.0
+          image: josuealcalde/synator:v2.2.0

@@ -198,6 +198,7 @@ def _create_update_or_merge(kind, obj, update, name, namespace, logger):
                 elif kind == 'Secret':  api.patch_namespaced_secret(name, namespace, obj)
         else:
             logger.info(f"Not updating {kind} {namespace}/{name} because label 'app.kubernetes.io/managed-by=synator' is missing")
+        _reload_pod(kind, name, namespace)
     except kubernetes.client.ApiException as e:
         logger.error(f"Could not create or update {kind} {namespace}/{name}", e)
 
@@ -217,3 +218,17 @@ def _delete(kind, name, namespace, logger):
             logger.error(f"Could not delete {kind} {namespace}/{name}", e)
     else:
         logger.info(f"Not deleting {kind} {namespace}/{name} because label 'app.kubernetes.io/managed-by=synator' is missing")
+
+
+def _reload_pod(kind, name, namespace):
+    # Get namespace
+    ns = namespace
+    api = kubernetes.client.CoreV1Api()
+    pods = api.list_namespaced_pod(ns)
+    print(ns, name)
+    for pod in pods.items:
+        # Find which pods use this secrets
+        if pod.metadata.annotations and pod.metadata.annotations.get('synator/reload'):
+            if any(kind.lower() + ':' + name in s for s in pod.metadata.annotations.get('synator/reload').split(',')):
+                # Reload pod deleting it
+                api.delete_namespaced_pod(pod.metadata.name, pod.metadata.namespace)
